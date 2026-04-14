@@ -1,0 +1,70 @@
+// =====================================================
+// Bitcoin tx commitment verifier in ErgoScript
+// ergoplatform/sigmastate-interpreter#1114
+// =====================================================
+//
+// SELF box registers:
+//   R4: expected Bitcoin txid in NATURAL hash order (Coll[Byte], 32 bytes)
+//       Bitcoin explorers display txid reversed. R4 stores the raw
+//       double-SHA256 output WITHOUT reversing. Off-chain producers
+//       must use the natural hash; copying a txid from an explorer
+//       directly into R4 will not work.
+//   R5: expected SHA-256 hash of a candidate output scriptPubKey
+//       (Coll[Byte], 32 bytes)
+//
+// Context extension variables (provided by the spender):
+//   var(1): Bitcoin transaction bytes in txid-preimage serialization.
+//           For legacy transactions, this is the full raw bytes.
+//           For SegWit, this is stripped of marker/flag/witness,
+//           since Bitcoin txid is defined over the non-witness
+//           serialization.
+//   var(2): byte offset of the candidate scriptPubKey (Int, >= 0)
+//   var(3): byte length of the candidate scriptPubKey (Int, >= 0)
+//
+// What this proves:
+//   1. The provided bytes correspond to the claimed Bitcoin transaction
+//      (txid verification via double-SHA256).
+//   2. The bytes at the given offset hash to the expected script hash.
+//
+// What this does NOT prove:
+//   The slice is structurally an output scriptPubKey. Output membership
+//   is asserted by the off-chain parser, not proven on-chain. A full
+//   in-script output parser would require iterating variable-length
+//   structures, which ErgoScript's lack of loops makes impractical.
+//
+// Compiled on Ergo mainnet node v6.0.2
+// Compiled on Ergo mainnet node v6.0.2
+// Address: xuTXXmMY3vBTHvwoBcwJWcuspb576q4i87x1yJERTxASCcQQfa7P2DG4cr2SwAQrk1qBrkpVWdjkXik6BEutF43yivU7DnodkGHbdv2uGq8KMnNhKaS
+//
+
+{
+  // === Inputs from context extension ===
+  val rawBtcTx       = getVar[Coll[Byte]](1).get
+  val scriptOffset   = getVar[Int](2).get
+  val scriptLen      = getVar[Int](3).get
+
+  // === Expected values from box registers ===
+  val expectedTxid       = SELF.R4[Coll[Byte]].get
+  val expectedScriptHash = SELF.R5[Coll[Byte]].get
+
+  // === Bounds checks ===
+  val validBounds = allOf(Coll(
+    scriptOffset >= 0,
+    scriptLen >= 0,
+    scriptOffset + scriptLen <= rawBtcTx.size
+  ))
+
+  // === Verify txid (R4) ===
+  val computedTxid = sha256(sha256(rawBtcTx))
+
+  // === Verify candidate script hash (R5) ===
+  val scriptBytes = rawBtcTx.slice(scriptOffset, scriptOffset + scriptLen)
+  val computedScriptHash = sha256(scriptBytes)
+
+  // === All conditions must hold ===
+  sigmaProp(
+    validBounds &&
+    computedTxid == expectedTxid &&
+    computedScriptHash == expectedScriptHash
+  )
+}

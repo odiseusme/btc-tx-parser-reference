@@ -1,0 +1,31 @@
+// =====================================================
+// Bitcoin txid verifier in ErgoScript — STEP 1
+// ergoplatform/sigmastate-interpreter#1114
+// =====================================================
+//
+// Verify that raw Bitcoin tx bytes (passed in context extension)
+// hash to the txid stored in R4.
+//
+// IMPORTANT: ErgoScript does not support .reverse on Coll[Byte].
+// Therefore R4 must store the txid in NATURAL hash order
+// (i.e. the raw double-SHA256 output), NOT Bitcoin's reversed
+// display format. The Python parser's double_sha256() output
+// (before reversing) is what goes into R4.
+//
+// Compiled on Ergo mainnet node v6.0.2
+// Address: 3UXe1h5UvQ6shCYuB1ZS7KaJuWP
+//
+
+{
+  // Raw Bitcoin transaction bytes from context extension variable #1
+  val rawBtcTx = getVar[Coll[Byte]](1).get
+
+  // Expected txid from register R4 (natural hash order, not reversed)
+  val expectedTxid = SELF.R4[Coll[Byte]].get
+
+  // Compute: SHA256(SHA256(raw_bytes)) — natural order
+  val computedTxid = sha256(sha256(rawBtcTx))
+
+  // Verify
+  sigmaProp(computedTxid == expectedTxid)
+}
