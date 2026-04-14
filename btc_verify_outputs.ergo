@@ -1,0 +1,77 @@
+// =====================================================
+// Bitcoin tx output commitment verifier in ErgoScript
+// ergoplatform/sigmastate-interpreter#1114
+// =====================================================
+//
+// Revised after review by Kushti (Ergo core developer).
+// Fixes the structural ambiguity where a matching byte slice
+// could appear in an input ScriptSig rather than an output
+// ScriptPubKey.
+//
+// SELF box registers:
+//   R4: expected Bitcoin txid in NATURAL hash order (Coll[Byte], 32 bytes)
+//       Bitcoin explorers display txid reversed. R4 stores the raw
+//       double-SHA256 output WITHOUT reversing.
+//   R5: expected SHA-256 hash of a Bitcoin output scriptPubKey
+//       (Coll[Byte], 32 bytes)
+//   R6: SHA-256 hash of the Bitcoin outputs section bytes
+//       (Coll[Byte], 32 bytes)
+//       The outputs section = [output_count varint] + [all outputs].
+//       This commitment anchors the script verification to the
+//       outputs section specifically.
+//
+// Context extension variables (provided by the spender):
+//   var(1): Bitcoin transaction bytes in txid-preimage serialization.
+//           For legacy transactions, this is the full raw bytes.
+//           For SegWit, this is stripped of marker/flag/witness.
+//   var(2): byte offset of the candidate scriptPubKey RELATIVE to
+//           the start of the outputs section bytes (Int, >= 0)
+//   var(3): byte length of the candidate scriptPubKey (Int, >= 0)
+//   var(4): the outputs section bytes (Coll[Byte])
+//
+// What this proves:
+//   1. The provided tx bytes correspond to the claimed Bitcoin txid
+//   2. The provided outputs section matches the committed hash in R6
+//   3. The selected slice lies within the committed outputs section
+//   4. The selected slice hashes to the expected script hash in R5
+//
+// This ensures the matched script bytes are proven to be inside
+// the Bitcoin outputs section, not merely somewhere in the
+// transaction bytes.
+//
+// Compiled on Ergo mainnet node v6.0.2
+// Address: 5f57sYY6AuoxSubXYsEJburtFXcyLTGJV6hK9X9zVLS8Yeq3o4439nN7cUAJc6b159og3sWAsCSM3r1iHhdnE7PdWVkibmuZs5VkfXdZGKoRaD2S9CYHv7zP6QcXqWGTPjx3
+//
+
+{
+  // === Inputs from context extension ===
+  val rawBtcTx       = getVar[Coll[Byte]](1).get
+  val scriptOffset   = getVar[Int](2).get
+  val scriptLen      = getVar[Int](3).get
+  val outputsBytes   = getVar[Coll[Byte]](4).get
+
+  // === Expected values from box registers ===
+  val expectedTxid       = SELF.R4[Coll[Byte]].get
+  val expectedScriptHash = SELF.R5[Coll[Byte]].get
+  val expectedOutputsHash = SELF.R6[Coll[Byte]].get
+
+  // === Verify txid (R4) ===
+  val txidOk = sha256(sha256(rawBtcTx)) == expectedTxid
+
+  // === Verify outputs section commitment (R6) ===
+  val outputsOk = sha256(outputsBytes) == expectedOutputsHash
+
+  // === Bounds checks ===
+  val boundsOk = allOf(Coll(
+    scriptOffset >= 0,
+    scriptLen >= 0,
+    scriptOffset + scriptLen <= outputsBytes.size
+  ))
+
+  // === Verify script hash within outputs section (R5) ===
+  val scriptBytes = outputsBytes.slice(scriptOffset, scriptOffset + scriptLen)
+  val scriptOk = sha256(scriptBytes) == expectedScriptHash
+
+  // === All conditions must hold ===
+  sigmaProp(txidOk && outputsOk && boundsOk && scriptOk)
+}

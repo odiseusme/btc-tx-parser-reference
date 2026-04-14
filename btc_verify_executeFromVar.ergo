@@ -1,0 +1,41 @@
+// =====================================================
+// Bitcoin tx verifier — executeFromVar variant (supplementary)
+// ergoplatform/sigmastate-interpreter#1114
+// =====================================================
+//
+// This is a supplementary example showing how the verification
+// logic from btc_verify_full.ergo can be refactored using the
+// executeFromVar pattern from Lithos Protocol (Evaluation.ergo#L55).
+//
+// The on-chain contract is minimal: it verifies the hash of a
+// verification script passed in var(0), then executes it.
+// The actual verification logic lives in the context variable.
+//
+// REGISTERS:
+//   R4: expected Bitcoin txid in NATURAL hash order (Coll[Byte], 32 bytes)
+//   R5: expected SHA-256 hash of candidate output scriptPubKey (Coll[Byte], 32 bytes)
+//   R6: blake2b256 hash of the trusted verification script (Coll[Byte], 32 bytes)
+//
+// CONTEXT VARS:
+//   var(0): the verification script bytes
+//           IMPORTANT: must be serialized using sigma.serialization.ValueSerializer,
+//           NOT raw ErgoTree bytes. See Ergo dev chat discussion and
+//           Lithos Protocol implementation for reference.
+//   var(1): Bitcoin transaction bytes in txid-preimage serialization
+//   var(2): byte offset of candidate scriptPubKey (Int)
+//   var(3): byte length of candidate scriptPubKey (Int)
+//
+// NOTE: This variant has not been tested with an actual spend.
+// The ValueSerializer serialization path and runtime wiring
+// would need verification before use.
+//
+// Compiled on Ergo mainnet node v6.0.2
+// Address: HCCXLdywGwazhTDuHUfV91FJ8gJre5eo
+//
+
+{
+  val verifyScript = getVar[Coll[Byte]](0).get
+  val trustedScriptHash = SELF.R6[Coll[Byte]].get
+  val scriptIsAuthentic = blake2b256(verifyScript) == trustedScriptHash
+  sigmaProp(scriptIsAuthentic) && executeFromVar[SigmaProp](0)
+}
