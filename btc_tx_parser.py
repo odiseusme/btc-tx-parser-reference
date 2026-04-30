@@ -71,6 +71,34 @@ def double_sha256(data: bytes) -> bytes:
     return hashlib.sha256(hashlib.sha256(data).digest()).digest()
 
 
+def display_to_natural(display_txid: str) -> str:
+    """
+    Convert a Bitcoin explorer-format txid (display order) to the natural
+    double-SHA256 byte order required by ErgoScript register R4.
+
+    Bitcoin explorers and most libraries display the txid as
+    reverse(SHA256(SHA256(tx_bytes))). R4 expects the UN-reversed natural
+    form, because ErgoScript has no .reverse on Coll[Byte].
+
+    Input:  64-character hex string (32 bytes). Leading "0x" tolerated.
+    Output: 64-character hex string in natural double-SHA256 order.
+    Raises: ValueError if input is not 64 hex characters.
+    """
+    cleaned = display_txid.strip().lower()
+    if cleaned.startswith('0x'):
+        cleaned = cleaned[2:]
+    if len(cleaned) != 64 or any(c not in '0123456789abcdef' for c in cleaned):
+        raise ValueError(
+            f'Expected 64 hex chars (32 bytes), got {len(cleaned)}: {display_txid!r}'
+        )
+    return bytes.fromhex(cleaned)[::-1].hex()
+
+
+def natural_to_display(natural_txid: str) -> str:
+    """Inverse of display_to_natural. Same byte-reverse operation."""
+    return display_to_natural(natural_txid)
+
+
 def get_script_offsets(stripped_hex: str) -> list:
     """
     Compute byte offsets of each output's scriptPubKey within stripped tx bytes.

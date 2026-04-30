@@ -3,6 +3,19 @@
 // ergoplatform/sigmastate-interpreter#1114
 // =====================================================
 //
+// STATUS (2026-04-30): COMPILED on mainnet, UNSPENT.
+// No box created at this address has been successfully spent
+// on mainnet. The pattern is validated by production use in
+// Lithos Protocol (Evaluation.ergo#L55) and the var(0) ==
+// ValueSerializer-output convention matches kushti's own
+// clarification of executeFrom* semantics in Ergo developer
+// chats (Telegram, msg#34571-34572 May 2025; Monthly Summary
+// June 2025): these functions are macros performing AST
+// substitution from context variables, not function calls
+// over raw ErgoTree bytes. However, wire-level verification
+// of the serialization path in this specific contract instance
+// remains pending an on-chain spend test.
+//
 // This is a supplementary example showing how the verification
 // logic from btc_verify_full.ergo can be refactored using the
 // executeFromVar pattern from Lithos Protocol (Evaluation.ergo#L55).
@@ -19,15 +32,10 @@
 // CONTEXT VARS:
 //   var(0): the verification script bytes
 //           IMPORTANT: must be serialized using sigma.serialization.ValueSerializer,
-//           NOT raw ErgoTree bytes. See Ergo dev chat discussion and
-//           Lithos Protocol implementation for reference.
+//           NOT raw ErgoTree bytes. See STATUS section above for citations.
 //   var(1): Bitcoin transaction bytes in txid-preimage serialization
 //   var(2): byte offset of candidate scriptPubKey (Int)
 //   var(3): byte length of candidate scriptPubKey (Int)
-//
-// NOTE: This variant has not been tested with an actual spend.
-// The ValueSerializer serialization path and runtime wiring
-// would need verification before use.
 //
 // Compiled on Ergo mainnet node v6.0.2
 // Address: HCCXLdywGwazhTDuHUfV91FJ8gJre5eo

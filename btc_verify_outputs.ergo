@@ -26,7 +26,7 @@
 //           For SegWit, this is stripped of marker/flag/witness.
 //   var(2): byte offset of the candidate scriptPubKey RELATIVE to
 //           the start of the outputs section bytes (Int, >= 0)
-//   var(3): byte length of the candidate scriptPubKey (Int, >= 0)
+//   var(3): byte length of the candidate scriptPubKey (Int, > 0)
 //   var(4): the outputs section bytes (Coll[Byte])
 //
 // What this proves:
@@ -39,8 +39,14 @@
 // the Bitcoin outputs section, not merely somewhere in the
 // transaction bytes.
 //
+// Audit revision (2026-04-30): scriptLen > 0 (was >= 0). An
+// empty slice yields SHA-256 of empty input — a known constant
+// (e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855).
+// Rejecting zero-length slices removes a degenerate edge case
+// where R5 happens to equal that constant.
+//
 // Compiled on Ergo mainnet node v6.0.2
-// Address: 5f57sYY6AuoxSubXYsEJburtFXcyLTGJV6hK9X9zVLS8Yeq3o4439nN7cUAJc6b159og3sWAsCSM3r1iHhdnE7PdWVkibmuZs5VkfXdZGKoRaD2S9CYHv7zP6QcXqWGTPjx3
+// Address: 5f57sYY6AuoxSubXYsEJburtFXcyLTGJV6hK9X9zVLS8Yeq3o4439nN7cUAJc6b159og3sWAsCSM3r1iHhdnE7PdWVkibjGrMxfxwexw5QWy3puVDhTYqo2NTLQ2wGDLgCXi
 //
 
 {
@@ -64,7 +70,7 @@
   // === Bounds checks ===
   val boundsOk = allOf(Coll(
     scriptOffset >= 0,
-    scriptLen >= 0,
+    scriptLen > 0,
     scriptOffset + scriptLen <= outputsBytes.size
   ))
 
