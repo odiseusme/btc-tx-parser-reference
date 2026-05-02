@@ -1,0 +1,160 @@
+{
+  // =====================================================
+  // Bitcoin tx parser — bounded version (N≤2 inputs, M≤4 outputs)
+  // ergoplatform/sigmastate-interpreter#1114
+  // =====================================================
+  //
+  // SELF box registers:
+  //   R4: expected Bitcoin txid in NATURAL hash order (Coll[Byte], 32 bytes)
+  //   R5: expected SHA-256 hash of an output scriptPubKey (Coll[Byte], 32 bytes)
+  //
+  // Context extension:
+  //   var(1): Bitcoin transaction bytes in non-witness (txid-preimage)
+  //           serialization
+  //
+  // Supported transaction shape:
+  //   - Non-witness serialization only
+  //   - Single-byte CompactSize encoding (counts and lengths < 0xfd)
+  //   - 1 or 2 inputs
+  //   - 1, 2, 3, or 4 outputs
+  //
+  // Transactions outside this subset are explicitly rejected.
+  //
+  // Assumptions (caller's responsibility):
+  //   - R4 stores the raw double-SHA256 output (32 bytes), NOT the
+  //     reversed Bitcoin RPC display order. Block explorers and
+  //     bitcoin-cli show the reversed form.
+  //   - R5 stores single SHA-256 of the scriptPubKey bytes (32 bytes),
+  //     NOT HASH160 (RIPEMD160 of SHA-256) or double-SHA-256.
+  //   - Context var 1 is the txid-preimage (non-witness / stripped)
+  //     serialization. For SegWit txs the caller must strip the
+  //     marker, flag, and witness data before passing.
+  //   - Outputs with empty scriptPubKey (script_len == 0) can never
+  //     match. This is by design — empty scripts are unspendable in
+  //     Bitcoin and matching sha256(empty) is degenerate.
+  //   - Behaviour on malformed input: the contract relies on
+  //     ErgoScript's eager evaluation. Malformed bytes that overflow
+  //     the parser's reads cause an out-of-bounds exception, which
+  //     ErgoScript treats as transaction invalidation. The spend is
+  //     rejected; no false acceptance is possible.
+
+  val txBytes = getVar[Coll[Byte]](1).get
+  val expectedTxid = SELF.R4[Coll[Byte]].get
+  val expectedScriptHash = SELF.R5[Coll[Byte]].get
+
+  // === Txid check ===
+  val txidOk = sha256(sha256(txBytes)) == expectedTxid
+
+  // === Helpers ===
+  // Read a byte as an unsigned value 0..255. ErgoScript doesn't expose
+  // bitwise AND on Int, so we branch on sign instead. A byte's .toInt is
+  // in [-128, 127]; values < 0 represent unsigned 128..255 and need +256.
+  def readByte(pos: Int): Int = {
+    val signed = txBytes(pos).toInt
+    if (signed < 0) signed + 256 else signed
+  }
+
+  // Compute end-offset of a single Bitcoin input starting at `start`.
+  // Input layout: [prev_txid:32][prev_vout:4][script_len:1][script_sig:N][sequence:4]
+  def inputEnd(start: Int): Int = {
+    val scriptLen = readByte(start + 36)
+    start + 37 + scriptLen + 4
+  }
+
+  // Compute end-offset of a single Bitcoin output starting at `start`.
+  // Output layout: [value:8][script_len:1][script_pubkey:N]
+  def outputEnd(start: Int): Int = {
+    val scriptLen = readByte(start + 8)
+    start + 9 + scriptLen
+  }
+
+  // Check if the scriptPubKey of one output (starting at `start`) hashes
+  // to expectedScriptHash. Rejects zero-length scripts.
+  def outputMatches(start: Int): Boolean = {
+    val scriptLen = readByte(start + 8)
+    if (scriptLen > 0) {
+      val scriptStart = start + 9
+      val scriptBytes = txBytes.slice(scriptStart, scriptStart + scriptLen)
+      sha256(scriptBytes) == expectedScriptHash
+    } else {
+      false
+    }
+  }
+
+  // === Parse: version + input count ===
+  // Minimum structurally valid bounded tx (1 input with empty scriptSig,
+  // 1 output with 1-byte scriptPubKey): 4+1+41+1+9+1+4 = 61 bytes.
+  val sizeOk = txBytes.size >= 61
+  val inputCount = readByte(4)
+  val inputCountOk = inputCount == 1 || inputCount == 2
+
+  // === Parse inputs (unrolled) ===
+  val input1ScriptLenOk = readByte(5 + 36) < 0xfd
+  val afterInput1 = inputEnd(5)
+
+  val input2ScriptLenOk = if (inputCount == 2) {
+    readByte(afterInput1 + 36) < 0xfd
+  } else {
+    true
+  }
+  val afterInput2 = if (inputCount == 2) inputEnd(afterInput1) else afterInput1
+
+  val inputsEnd = afterInput2
+
+  // === Parse output count ===
+  val outputCount = readByte(inputsEnd)
+  val outputCountOk = outputCount >= 1 && outputCount <= 4
+
+  // === Parse outputs (unrolled) ===
+  val output1Start = inputsEnd + 1
+  val output1ScriptLenOk = readByte(output1Start + 8) < 0xfd
+  val match1 = outputMatches(output1Start)
+  val afterOutput1 = outputEnd(output1Start)
+
+  val output2ScriptLenOk = if (outputCount >= 2) {
+    readByte(afterOutput1 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match2 = if (outputCount >= 2) outputMatches(afterOutput1) else false
+  val afterOutput2 = if (outputCount >= 2) outputEnd(afterOutput1) else afterOutput1
+
+  val output3ScriptLenOk = if (outputCount >= 3) {
+    readByte(afterOutput2 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match3 = if (outputCount >= 3) outputMatches(afterOutput2) else false
+  val afterOutput3 = if (outputCount >= 3) outputEnd(afterOutput2) else afterOutput2
+
+  val output4ScriptLenOk = if (outputCount == 4) {
+    readByte(afterOutput3 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match4 = if (outputCount == 4) outputMatches(afterOutput3) else false
+  val afterOutput4 = if (outputCount == 4) outputEnd(afterOutput3) else afterOutput3
+
+  val outputsEnd = afterOutput4
+
+  // === Locktime structural check ===
+  val locktimeOk = outputsEnd == txBytes.size - 4
+
+  // === Output match check ===
+  val anyOutputMatches = match1 || match2 || match3 || match4
+
+  // === All conditions ===
+  val allVarintsOk = input1ScriptLenOk && input2ScriptLenOk &&
+                     output1ScriptLenOk && output2ScriptLenOk &&
+                     output3ScriptLenOk && output4ScriptLenOk
+
+  sigmaProp(
+    sizeOk &&
+    txidOk &&
+    inputCountOk &&
+    outputCountOk &&
+    allVarintsOk &&
+    locktimeOk &&
+    anyOutputMatches
+  )
+}
