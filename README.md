@@ -6,6 +6,8 @@ This repository shows a practical ErgoScript pattern for verifying Bitcoin trans
 
 > ⚠️ **Bitcoin txid byte order.** Bitcoin explorers and most libraries display txids reversed from their natural double-SHA256 byte order. Register `R4` in this contract stores the **natural** order (the raw `SHA256(SHA256(tx_bytes))` output), not the explorer-display order. Copying a txid from an explorer directly into `R4` will not work. The Python parser in `btc_tx_parser.py` produces both forms.
 
+> 📅 **Update — 2026-05-11.** After community feedback (Kushti, Ergo dev Telegram, 2026-04-30) that an outputs-section hash is not a Bitcoin-native primitive, this repository has been extended with `btc_verify_parser.ergo` — a bounded structural parser that proves output-section membership from the authenticated transaction bytes themselves, without an R6 helper commitment. The parser is the canonical answer to #1114 as of this date. The R6-based `btc_verify_outputs.ergo` is retained as evolution history. See [Post-pivot status](#post-pivot-status--2026-05-11) below.
+
 ## What problem this solves
 
 Suppose an Ergo box stores:
@@ -35,7 +37,9 @@ The revised design fixes this by adding `R6`, a commitment to the Bitcoin output
 
 **`btc_tx_parser.py`** — Python reference parser for Bitcoin transactions. Handles legacy and SegWit forms. Produces Bitcoin display txid, natural-order txid for R4, stripped transaction bytes, extracted outputs section bytes for R6, and relative offsets of each output scriptPubKey within the outputs section.
 
-**`btc_verify_outputs.ergo`** — Main ErgoScript contract (hardened). Verifies R4 (txid), R6 (outputs section commitment), bounds checks, and R5 (script hash within committed outputs section). Compiled address: `5f57sYY6AuoxSubXYsEJburtFXcyLTGJV6hK9X9zVLS8Yeq3o4439nN7cUAJc6b159og3sWAsCSM3r1iHhdnE7PdWVkibjGrMxfxwexw5QWy3puVDhTYqo2NTLQ2wGDLgCXi`
+**`btc_verify_parser.ergo`** — Bounded structural parser (the canonical answer to #1114 after the 2026-05-11 pivot). Verifies R4 (txid) and R5 (one parsed output's scriptPubKey hash) by walking the transaction structure within a bounded subset: 1-2 inputs, 1-4 outputs, single-byte CompactSize encoding (values < 0xfd), non-witness serialization. Locktime structural anchor (outputsEnd == size - 4) prevents drift. No R6 helper commitment; output-section membership is proven structurally from the authenticated bytes.
+
+**`btc_verify_outputs.ergo`** — Earlier hardened contract (R4+R5+R6 with outputs-section commitment). Retained as evolution history. Verifies R4 (txid), R6 (outputs section commitment), bounds checks, and R5 (script hash within committed outputs section). Compiled address: `5f57sYY6AuoxSubXYsEJburtFXcyLTGJV6hK9X9zVLS8Yeq3o4439nN7cUAJc6b159og3sWAsCSM3r1iHhdnE7PdWVkibjGrMxfxwexw5QWy3puVDhTYqo2NTLQ2wGDLgCXi`
 
 **`btc_verify_full.ergo`** — Earlier baseline using only R4 + R5. Included for narrative completeness — this is the version Kushti's review identified as inadequate (see "Contract evolution" below). Not the recommended pattern; do not use it in production.
 
@@ -89,8 +93,9 @@ This is intentional. The pattern is meant to be composed with an outer authorize
 |---|---|---|---|
 | 1 | `btc_txid_verify.ergo` | Txid only (R4) | Minimal building block |
 | 2 | `btc_verify_full.ergo` | Txid + script hash (R4+R5) | Pre-review version. Kushti identified that a matching slice could come from a `ScriptSig` rather than an output `scriptPubKey`. Superseded. |
-| 3 | `btc_verify_outputs.ergo` | Txid + outputs commitment + script hash (R4+R5+R6) | Hardened post-review. **Canonical version.** |
-| supp | `btc_verify_executeFromVar.ergo` | R4+R5 with verification logic moved off-chain into `var(0)` | Pattern from Lithos Protocol. Compiled, not yet spend-tested. |
+| 3 | `btc_verify_outputs.ergo` | Txid + outputs commitment + script hash (R4+R5+R6) | Hardened post-review. Mainnet-tested. Superseded 2026-05-11 — see stage 4. |
+| 4 | `btc_verify_parser.ergo` | Txid + script hash via bounded structural parsing (R4+R5) | Pivoted to after Kushti's 2026-04-30 critique that the R6 outputs-section hash is not a Bitcoin-native primitive. Proves output-section membership structurally rather than via helper commitment. **Canonical version.** Mainnet-tested. |
+| supp | `btc_verify_executeFromVar.ergo` | R4+R5 with verification logic moved off-chain into `var(0)` | Pattern from Lithos Protocol. Compiled, not spend-tested. Deprioritized after pivot — not the canonical answer to #1114. |
 
 ## Important notes
 
@@ -108,21 +113,21 @@ Two contracts have been spend-tested on Ergo mainnet:
 |---|---|---|
 | `btc_txid_verify.ergo` (baseline, R4 only) | 1,763,199 | `0ede5f0d3cd543b0a3f5f2c1872bb62a13dd64f573ee5ac06350007674d5cd69` |
 | `btc_verify_outputs.ergo` (hardened, R4+R5+R6) | 1,763,772 | `49fc760609080786010bdd91929ef8853d12da3fa3846a3351044170fe78d8e6` |
+| `btc_verify_parser.ergo` (bounded structural parser, R4+R5) | 1,776,872 | `4298f96593ec179e8aa364efdede4ff5ad7f08d0d9bdc9562f78ee288cdb9129` |
 
-`btc_verify_full.ergo` was superseded before spend-testing (see "Contract evolution"). `btc_verify_executeFromVar.ergo` is open work — see below.
+`btc_verify_full.ergo` was superseded before spend-testing (see "Contract evolution"). `btc_verify_executeFromVar.ergo` is deprioritized after the 2026-05-11 pivot — see [Post-pivot status](#post-pivot-status--2026-05-11) below.
 
-## Open work — testing the executeFromVar variant
+## Post-pivot status — 2026-05-11
 
-The `executeFromVar` variant compiles successfully on mainnet but no box created at its address has been spent. The pattern itself is validated by production use in Lithos Protocol (see `Evaluation.ergo`). The `var(0)` serialization convention — using `sigma.serialization.ValueSerializer` rather than raw ErgoTree bytes — matches Kushti's own clarification of `executeFrom*` semantics in Ergo developer chats (Telegram, msg#34571–34572 May 2025; Monthly Summary June 2025): these functions are macros performing AST substitution from context variables, not function calls over raw ErgoTree bytes.
+On 2026-04-30 (Ergo developer Telegram), Kushti raised a substantive concern about the R6 outputs-section hash approach: an outputs-section hash is not a Bitcoin-native primitive — Bitcoin's consensus commits to txids (which are double-SHA256 of the transaction bytes), but it does not commit to "the hash of the outputs section" as a separate value. There is no canonical SPV-style proof that a given byte region is the outputs section of a given Bitcoin transaction. The R6 helper in `btc_verify_outputs.ergo` is a valid intra-claim consistency check but cannot be anchored to Bitcoin's chain state.
 
-Closing this gap requires:
+This drove a pivot to `btc_verify_parser.ergo`: a bounded structural parser that proves output-section membership directly from the authenticated Bitcoin transaction bytes, without a helper commitment. The parser walks the transaction structure (version, input count, inputs, output count, outputs, locktime) within a documented bounded subset (1-2 inputs, 1-4 outputs, single-byte CompactSize, non-witness serialization). Transactions outside this subset are explicitly rejected, not silently mishandled. The locktime structural anchor (`outputsEnd == size - 4`) prevents structural drift.
 
-1. Build the verifier ErgoScript body — a `sigmaProp(...)` expression that re-implements the R4+R5 checks the variant claims to perform — and serialize it via `ValueSerializer` to produce `var(0)` bytes.
-2. Compute `blake2b256(var0_bytes)`. That is `R6` for this variant. (Note: `R6` here means "verifier-script hash", not "outputs-section hash" as in `btc_verify_outputs.ergo` — registers are overloaded between the two contracts.)
-3. Fund a box at the executeFromVar address with `R4` (BTC txid), `R5` (BTC output script hash), `R6` (verifier-script hash).
-4. Construct a spend tx with `var(0) = serialized verifier`, `var(1) = stripped tx bytes`, `var(2/3) = scriptPubKey offset/length`.
-5. Submit on mainnet. Confirm spend.
-6. Update this README and the contract header to remove the "untested" disclaimer.
+The parser was reviewed via the Ergo Knowledge Base MCP audit tool (`audit_contract` Pass 1 returned no findings at any severity) and mainnet-verified at block 1,776,872, spend tx `4298f96593ec179e8aa364efdede4ff5ad7f08d0d9bdc9562f78ee288cdb9129`.
+
+The Trust Assumptions section above remains accurate for `btc_verify_outputs.ergo` (R4↔R6 binding is off-chain only). It does not apply to `btc_verify_parser.ergo`, which proves output-section membership structurally from the bytes the txid commitment in R4 already authenticates.
+
+`btc_verify_executeFromVar.ergo` was a parallel exploration. After the pivot it is no longer the canonical answer to #1114, and the spend test that was previously listed as open work is deprioritized. The contract remains in the repository as historical reference. The off-chain serialization recipe is now well-understood (the canonical pattern is `ValueSerializer.serialize(ergoTree.toProposition(true))` inside `VersionContext.withVersions(V6SoftForkVersion, V6SoftForkVersion)` — see Lithos-Protocol/Lithos-Client `lithos-lib/src/main/scala/mutations/Contract.scala` for the production reference), but proving it on mainnet is not necessary for the bounty answer.
 
 ## Run the tests
 
@@ -137,10 +142,11 @@ All compiled on Ergo mainnet node v6.0.2:
 
 | File | What it does | Status |
 |------|-------------|--------|
-| `btc_verify_outputs.ergo` | Hardened: R4 + R5 + R6 outputs commitment | **Canonical, mainnet-tested** |
+| `btc_verify_parser.ergo` | Bounded structural parser: R4 + R5 via on-chain parsing | **Canonical, mainnet-tested (block 1,776,872)** |
+| `btc_verify_outputs.ergo` | Hardened: R4 + R5 + R6 outputs commitment | Mainnet-tested (block 1,763,772). Superseded 2026-05-11 — see Post-pivot status |
 | `btc_txid_verify.ergo` | Txid only (R4) | Building block, mainnet-tested |
 | `btc_verify_full.ergo` | Baseline: R4 + R5 only | Pre-review, superseded |
-| `btc_verify_executeFromVar.ergo` | executeFromVar variant | Compiled, spend-test pending |
+| `btc_verify_executeFromVar.ergo` | executeFromVar variant | Compiled, spend-test deprioritized after pivot |
 
 ## Context
 
