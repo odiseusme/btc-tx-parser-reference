@@ -79,3 +79,45 @@ Single commit, four files changed:
 ## Methodology note
 
 This audit was conducted by [odiseusme](https://github.com/odiseusme) in collaboration with Claude (Anthropic) as technical implementation partner, using the [Ergo Knowledge Base MCP](https://ergo-knowledge-base.vercel.app) for community-grounded research. The findings and patches are real but modest in scope — the contracts were already largely sound. The audit's main contribution is making implicit design choices explicit (Trust assumptions, Composition, Contract evolution) so future readers and integrators don't have to reverse-engineer them.
+
+# Update — 2026-05-11: Post-audit pivot
+
+This section records work that happened after the original audit pass landed on 2026-04-30. It supersedes the "Open work" item in the audit body.
+
+## What prompted the update
+
+On the evening of 2026-04-30 (Ergo developer Telegram), Kushti raised a substantive concern about the R6 outputs-section hash approach in `btc_verify_outputs.ergo`. Paraphrased: in a realistic input contract, even the txid is not naturally available — it can be replaced by a Merkle proof against a Bitcoin block header committed to an on-chain headers AVL+ tree. For an outputs-section hash he saw no equivalent. The R6 helper is internally consistent but is not a Bitcoin-native primitive.
+
+This was a correct observation. Bitcoin's consensus commits to txids (double-SHA256 of the transaction bytes); it does not separately commit to the hash of any sub-region. There is no canonical SPV-style proof that "outputs section X hashes to Y." The R6 approach proves membership inside a separately committed byte blob but cannot be anchored to Bitcoin's chain state.
+
+## What changed in response
+
+A new contract was added: `btc_verify_parser.ergo`. It is a bounded structural parser that proves output-section membership from the authenticated transaction bytes themselves, without a helper commitment.
+
+The bounded subset is documented in the contract header and rejected explicitly outside the supported shape:
+
+- Non-witness (txid-preimage) serialization only
+- Single-byte CompactSize encoding (values < `0xfd`)
+- 1 or 2 inputs
+- 1 to 4 outputs
+
+The parser walks the transaction structure (version, input count, unrolled per-input offsets, output count, unrolled per-output offsets, locktime). The locktime structural anchor — `outputsEnd == txBytes.size - 4` — prevents structural drift: any malformed transaction that doesn't land exactly at the expected position is rejected.
+
+## External review of the parser
+
+A Pass 1 audit was run against the Ergo Knowledge Base MCP audit tool (`audit_contract` at `ergo-knowledge-base.vercel.app/api/mcp`). Pass 1 returned no findings at any severity. Pass 2 (`audit_verify`) timed out on rate limits and was not completed; given Pass 1's clean result and the successful mainnet test below, Pass 2 was treated as a useful-but-not-load-bearing check.
+
+## Mainnet verification
+
+`btc_verify_parser.ergo` was mainnet-spend-tested at block 1,776,872, spend tx `4298f96593ec179e8aa364efdede4ff5ad7f08d0d9bdc9562f78ee288cdb9129`. The test consumed a box funded at the parser's P2S address with R4 = natural-order txid and R5 = SHA-256 of one output's scriptPubKey of the same Rosen Bridge Bitcoin→Ergo transaction already used to verify `btc_verify_outputs.ergo`. First-try success, no failed spends.
+
+## How this changes the audit findings
+
+- **Finding 1 (R4↔R6 binding is off-chain only — by necessity)** — remains accurate as written for `btc_verify_outputs.ergo`. Does not apply to `btc_verify_parser.ergo`, which proves output-section membership structurally and therefore has no R6 helper to bind.
+- **Findings 2-4** — unchanged, all still apply to `btc_verify_outputs.ergo` and were patched as recorded above.
+- **Finding 5 (executeFromVar variant — spend-untested)** — superseded. The executeFromVar variant is deprioritized after this pivot. The off-chain serialization recipe is now well-documented (`ValueSerializer.serialize(ergoTree.toProposition(true))` inside `VersionContext.withVersions(V6SoftForkVersion, V6SoftForkVersion)` — pattern from Lithos-Protocol/Lithos-Client `lithos-lib/src/main/scala/mutations/Contract.scala`), but a mainnet spend test is no longer necessary to answer #1114.
+- **Finding 6 (verifier vs. authorizer)** — applies equally to `btc_verify_parser.ergo`. The parser is a pure verifier; production deployment requires composition with an outer authorizer. README's "Composition and authorization" section covers this.
+
+## Open work — 2026-05-11
+
+None at the bounty-submission level. The canonical answer to #1114 (`btc_verify_parser.ergo`) is mainnet-verified, documented, and externally reviewed. Awaiting direction from the bounty owner on whether anything further is required.
