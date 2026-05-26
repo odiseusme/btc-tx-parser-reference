@@ -1,0 +1,27 @@
+{
+  "bitcoin": {
+    "input_count": 1,
+    "is_segwit": true,
+    "output_count": 3,
+    "stripped_size_bytes": 175,
+    "txid_display": "bcb5cb37f1307cc2240a14c7add48b57a479c55ab2123e8bcc02bdf15b3e1ce5",
+    "txid_natural": "e51c3e5bf1bd02cc8b3e12b25ac579a4578bd4adc7140a24c27c30f137cbb5bc"
+  },
+  "context": {
+    "1": "02000000000101f69c854ccbfa5ed35e4c39f5d85fc44763ef9bdeefa045d831f6d34212a89fb10000000000ffffffff030000000000000000356a330000000000000021c400000000000000a82102fd52469f33344592dff455bb2e934d86e1d3f2587c2eeb635441f5f4cfdc9ef8e09304000000000016001483cf4566652b5385b1f94494034f78f177792265f00900000000000016001437f45872b029e6bf139bf43be4b44548127a82e3024730440220131b6d94ebc4f3ca649ee6cd92a2f49610db4b76cbf540a788d52370c713f03602201ac8d6e3f1a6614ef1e38b13fe5e1f7459b44f75a3f70799b31ae230cd117f55012102168e8e2cb61100bc4aee81bf3a0544c0f726c88b6319e45017594e32413f841100000000"
+  },
+  "contract": "btc_verify_parser",
+  "expected": "invalid",
+  "reason": "Context var 1 contains full SegWit serialization instead of non-witness txid preimage.",
+  "registers": {
+    "R4": "e51c3e5bf1bd02cc8b3e12b25ac579a4578bd4adc7140a24c27c30f137cbb5bc",
+    "R5": "57e9976c61fe62da25ea3397e6ffbe72e6edf361ea908c784b172d05c4165a86"
+  },
+  "selected_output": {
+    "index": 1,
+    "script_hash_sha256": "57e9976c61fe62da25ea3397e6ffbe72e6edf361ea908c784b172d05c4165a86",
+    "script_pubkey_hex": "001483cf4566652b5385b1f94494034f78f177792265",
+    "value_satoshis": 300000
+  },
+  "version": "btc-ergo-proof-v1"
+}

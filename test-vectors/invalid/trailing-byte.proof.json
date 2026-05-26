@@ -1,0 +1,27 @@
+{
+  "bitcoin": {
+    "input_count": 1,
+    "is_segwit": true,
+    "output_count": 3,
+    "stripped_size_bytes": 175,
+    "txid_display": "bcb5cb37f1307cc2240a14c7add48b57a479c55ab2123e8bcc02bdf15b3e1ce5",
+    "txid_natural": "e51c3e5bf1bd02cc8b3e12b25ac579a4578bd4adc7140a24c27c30f137cbb5bc"
+  },
+  "context": {
+    "1": "0200000001f69c854ccbfa5ed35e4c39f5d85fc44763ef9bdeefa045d831f6d34212a89fb10000000000ffffffff030000000000000000356a330000000000000021c400000000000000a82102fd52469f33344592dff455bb2e934d86e1d3f2587c2eeb635441f5f4cfdc9ef8e09304000000000016001483cf4566652b5385b1f94494034f78f177792265f00900000000000016001437f45872b029e6bf139bf43be4b44548127a82e30000000000"
+  },
+  "contract": "btc_verify_parser",
+  "expected": "invalid",
+  "reason": "Transaction bytes hash to R4 but have a trailing byte after locktime.",
+  "registers": {
+    "R4": "5024b3180bb185928c5e828da8400a71e9eb7b036f0ef84568d0720289b5868e",
+    "R5": "57e9976c61fe62da25ea3397e6ffbe72e6edf361ea908c784b172d05c4165a86"
+  },
+  "selected_output": {
+    "index": 1,
+    "script_hash_sha256": "57e9976c61fe62da25ea3397e6ffbe72e6edf361ea908c784b172d05c4165a86",
+    "script_pubkey_hex": "001483cf4566652b5385b1f94494034f78f177792265",
+    "value_satoshis": 300000
+  },
+  "version": "btc-ergo-proof-v1"
+}
