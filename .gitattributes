@@ -1,0 +1,11 @@
+.gitattributes text eol=lf
+.gitignore text eol=lf
+*.properties text eol=lf
+*.sbt text eol=lf
+*.scala text eol=lf
+*.ergo text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf

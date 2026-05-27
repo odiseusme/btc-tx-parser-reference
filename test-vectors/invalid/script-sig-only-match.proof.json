@@ -1,0 +1,27 @@
+{
+  "bitcoin": {
+    "input_count": 1,
+    "is_segwit": false,
+    "output_count": 2,
+    "stripped_size_bytes": 275,
+    "txid_display": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
+    "txid_natural": "169e1e83e930853391bc6f35f605c6754cfead57cf8387639d3b4096c54f18f4"
+  },
+  "context": {
+    "1": "0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0200ca9a3b00000000434104ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84cac00286bee0000000043410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac00000000"
+  },
+  "contract": "btc_verify_parser",
+  "expected": "invalid",
+  "reason": "R5 matches an input scriptSig hash, not an output scriptPubKey hash.",
+  "registers": {
+    "R4": "169e1e83e930853391bc6f35f605c6754cfead57cf8387639d3b4096c54f18f4",
+    "R5": "704fd3da352a27b8b7d2a58bd31f257b31064c4ee64ef8c359510dab68510d1d"
+  },
+  "selected_output": {
+    "index": 0,
+    "script_hash_sha256": "799c48c4482e6a9726b0ee7f1609fb83c52a0d63b9c1d0b3fd8770f26e1c4677",
+    "script_pubkey_hex": "4104ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84cac",
+    "value_satoshis": 1000000000
+  },
+  "version": "btc-ergo-proof-v1"
+}
