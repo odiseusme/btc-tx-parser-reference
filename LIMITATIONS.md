@@ -32,15 +32,22 @@ hash. It does not bind:
 - output value;
 - uniqueness of that script within the transaction.
 
-Add protocol-level rules when amount, index, uniqueness, or duplicate-output
-policy matters.
+Use `btc_verify_parser_amount.ergo` when amount matters, and add protocol-level
+rules if duplicate outputs must be rejected or handled specially.
+
+## Amount Variant Status
+
+`btc_verify_parser_amount.ergo` is model-tested by the Python verifier,
+covered by public negative vectors, and compile-checked with AppKit. It should
+still be spend-tested on the exact target Ergo node and tooling versions before
+being described as production-ready.
 
 ## executeFromVar Variant Status
 
 `btc_verify_executeFromVar.ergo` is a supplementary historical exploration.
 The reproducible AppKit CI compile harness intentionally covers the canonical
-parser and the earlier direct verifier contracts, but not this executeFromVar
-variant.
+parser, the amount-binding variant, and the earlier direct verifier contracts,
+but not this executeFromVar variant.
 
 ## Pure Verifier, Not Authorizer
 

@@ -21,6 +21,27 @@ ABI:
 | `SELF.R5` | `Coll[Byte]` | SHA-256 of target output `scriptPubKey` |
 | `getVar(1)` | `Coll[Byte]` | Non-witness transaction bytes |
 
+### `btc_verify_parser_amount`
+
+Adds amount binding for payment-style claims.
+
+ABI:
+
+| Location | Type | Meaning |
+| --- | --- | --- |
+| `SELF.R4` | `Coll[Byte]` | Natural-order double-SHA256 txid |
+| `SELF.R5` | `Coll[Byte]` | SHA-256 of target output `scriptPubKey` |
+| `SELF.R6` | `Long` | Minimum required output value in satoshis |
+| `getVar(1)` | `Coll[Byte]` | Non-witness transaction bytes |
+
+Verifies all `btc_verify_parser` conditions plus:
+
+```text
+parsed_output.value_satoshis >= R6
+0 <= R6 <= 2100000000000000
+parsed_output.value_satoshis <= 2100000000000000
+```
+
 ## Transaction Subset
 
 The parser accepts:
@@ -66,6 +87,9 @@ It rejects everything else.
   }
 }
 ```
+
+For the amount variant, `contract` is `btc_verify_parser_amount` and
+`registers.R6` is the minimum satoshi threshold.
 
 Public proof vectors live under `test-vectors/valid` and
 `test-vectors/invalid`. The test suite loads every `*.proof.json` vector and
