@@ -14,6 +14,7 @@ from btc_ergo_proof import (
     build_bounded_output_proof,
     double_sha256,
     verify_bounded_parser,
+    verify_bounded_parser_amount,
 )
 
 from fixtures import ROSEN_BRIDGE_TX_HEX, ROSEN_TXID_DISPLAY, SATOSHI_TX_HEX
@@ -97,6 +98,34 @@ class BitcoinProofReferenceTests(unittest.TestCase):
 
         self.assertFalse(verify_bounded_parser(proof))
 
+    def test_amount_binding_rejects_underpayment_and_accepts_exact_or_more(self):
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+
+        self.assertTrue(verify_bounded_parser_amount(proof, min_satoshis=300000))
+        self.assertTrue(verify_bounded_parser_amount(proof, min_satoshis=299999))
+        self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=300001))
+        self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=-1))
+        self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=2_100_000_000_000_001))
+
+    def test_amount_binding_rejects_output_value_above_bitcoin_supply(self):
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        output1_start = 109
+        tx_bytes[output1_start:output1_start + 8] = (
+            2_100_000_000_000_001
+        ).to_bytes(8, "little")
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+
+        self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=1))
+
+    def test_amount_contract_uses_r6_min_satoshis_abi(self):
+        source = (ROOT / "btc_verify_parser_amount.ergo").read_text(encoding="utf-8")
+
+        self.assertIn("SELF.R6[Long]", source)
+        self.assertIn("getVar[Coll[Byte]](1)", source)
+        self.assertIn("readAmount", source)
+        self.assertIn("amountOk", source)
+
     def test_cli_builds_json_proof_that_verifies_locally(self):
         completed = subprocess.run(
             [
@@ -118,13 +147,40 @@ class BitcoinProofReferenceTests(unittest.TestCase):
         self.assertEqual(proof["selected_output"]["index"], 1)
         self.assertTrue(verify_bounded_parser(proof))
 
+    def test_cli_builds_amount_proof_that_verifies_locally(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "btc_ergo_proof.py"),
+                "build",
+                "--raw-tx",
+                ROSEN_BRIDGE_TX_HEX,
+                "--output-index",
+                "1",
+                "--min-satoshis",
+                "300000",
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        proof = json.loads(completed.stdout)
+
+        self.assertEqual(proof["contract"], "btc_verify_parser_amount")
+        self.assertEqual(proof["registers"]["R6"], 300000)
+        self.assertTrue(verify_bounded_parser_amount(proof))
+
     def test_valid_json_vectors_verify_locally(self):
         paths = sorted((ROOT / "test-vectors" / "valid").glob("*.proof.json"))
         self.assertGreaterEqual(len(paths), 1)
         for path in paths:
             with self.subTest(vector=path.name):
                 vector = self._load_vector(path)
-                self.assertTrue(verify_bounded_parser(vector))
+                if vector.get("contract") == "btc_verify_parser_amount":
+                    self.assertTrue(verify_bounded_parser_amount(vector))
+                else:
+                    self.assertTrue(verify_bounded_parser(vector))
 
     def test_invalid_json_vectors_fail_locally(self):
         paths = sorted((ROOT / "test-vectors" / "invalid").glob("*.proof.json"))
@@ -132,7 +188,10 @@ class BitcoinProofReferenceTests(unittest.TestCase):
         for path in paths:
             with self.subTest(vector=path.name):
                 vector = self._load_vector(path)
-                self.assertFalse(verify_bounded_parser(vector))
+                if vector.get("contract") == "btc_verify_parser_amount":
+                    self.assertFalse(verify_bounded_parser_amount(vector))
+                else:
+                    self.assertFalse(verify_bounded_parser(vector))
 
     def _replace_context_bytes_and_r4(self, proof, tx_bytes):
         proof["context"]["1"] = tx_bytes.hex()
