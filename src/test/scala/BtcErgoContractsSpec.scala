@@ -10,6 +10,7 @@ class BtcErgoContractsSpec extends AnyFlatSpec with Matchers {
   private val CompileCheckedContracts = Seq(
     "btc_txid_verify.ergo",
     "btc_verify_parser.ergo",
+    "btc_verify_parser_amount.ergo",
     "btc_verify_full.ergo",
     "btc_verify_outputs.ergo"
   )

@@ -10,6 +10,8 @@ The vectors in this directory are small integration fixtures for consumers.
 | `invalid/script-sig-only-match.proof.json` | rejected | R5 matches an input scriptSig hash, not an output scriptPubKey hash |
 | `invalid/trailing-byte.proof.json` | rejected | R4 matches the supplied bytes, but the structural locktime check rejects trailing data |
 | `invalid/empty-script.proof.json` | rejected | Empty scriptPubKey cannot satisfy the output-match predicate |
+| `invalid/underpayment.proof.json` | rejected | Amount-binding contract rejects a matching output below the R6 minimum |
+| `invalid/oversupply-output.proof.json` | rejected | Amount-binding contract rejects an output value above the Bitcoin supply bound |
 
 `tests/test_reference_kit.py` loads every `*.proof.json` file from both
 directories. This keeps public vectors and local verifier behavior in sync.
