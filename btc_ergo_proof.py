@@ -50,6 +50,11 @@ def build_bounded_output_proof(
         ]
         if not matches:
             raise ValueError("script_hash does not match any parsed output")
+        if len(matches) > 1:
+            raise ValueError(
+                f"script_hash matches multiple outputs (indices {matches}). "
+                "Pass output_index explicitly to disambiguate."
+            )
         selected_index = matches[0]
 
     selected = outputs[selected_index]
@@ -123,6 +128,9 @@ def _verify_parser_bytes(
     *,
     min_satoshis: int | None = None,
 ) -> bool:
+    # Mirrors the on-chain bounded parser assumptions exactly
+    # (1-2 inputs, 1-4 outputs, single-byte CompactSize, non-witness bytes).
+    # NOT a general Bitcoin transaction parser. See LIMITATIONS.md and SPEC.md.
     size_ok = len(tx_bytes) >= 61
     txid_ok = double_sha256(tx_bytes).hex() == expected_txid
 
