@@ -12,7 +12,12 @@ import argparse
 import hashlib
 import json
 import sys
+from typing import Any
+
 from btc_tx_parser import parse_bitcoin_tx
+
+
+MAX_BTC_SATOSHIS = 21_000_000 * 100_000_000
 
 
 def double_sha256(data: bytes) -> bytes:
@@ -24,7 +29,8 @@ def build_bounded_output_proof(
     *,
     output_index: int | None = None,
     script_hash: str | None = None,
-) -> dict[str, object]:
+    min_satoshis: int | None = None,
+) -> dict[str, Any]:
     """Build the register/context payload for the bounded parser contract."""
     tx = parse_bitcoin_tx(raw_tx_hex)
     outputs = tx["outputs"]
@@ -49,7 +55,7 @@ def build_bounded_output_proof(
     selected = outputs[selected_index]
     proof = {
         "version": "btc-ergo-proof-v1",
-        "contract": "btc_verify_parser",
+        "contract": "btc_verify_parser_amount" if min_satoshis is not None else "btc_verify_parser",
         "bitcoin": {
             "txid_display": tx["txid"],
             "txid_natural": tx["txid_natural"],
@@ -72,10 +78,13 @@ def build_bounded_output_proof(
             "script_hash_sha256": selected["script_hash_sha256"],
         },
     }
+    if min_satoshis is not None:
+        _validate_satoshis(min_satoshis, "min_satoshis")
+        proof["registers"]["R6"] = min_satoshis
     return proof
 
 
-def verify_bounded_parser(proof: dict[str, object]) -> bool:
+def verify_bounded_parser(proof: dict[str, Any]) -> bool:
     """Return True if the proof satisfies btc_verify_parser.ergo semantics."""
     try:
         tx_bytes = bytes.fromhex(proof["context"]["1"])
@@ -86,10 +95,33 @@ def verify_bounded_parser(proof: dict[str, object]) -> bool:
         return False
 
 
+def verify_bounded_parser_amount(
+    proof: dict[str, Any],
+    min_satoshis: int | None = None,
+) -> bool:
+    """Return True if the proof satisfies the amount-binding parser semantics."""
+    try:
+        tx_bytes = bytes.fromhex(proof["context"]["1"])
+        expected_txid = _normalize_hex(proof["registers"]["R4"], expected_bytes=32)
+        expected_script_hash = _normalize_hex(proof["registers"]["R5"], expected_bytes=32)
+        required = proof["registers"].get("R6") if min_satoshis is None else min_satoshis
+        required = _validate_satoshis(required, "min_satoshis")
+        return _verify_parser_bytes(
+            tx_bytes,
+            expected_txid,
+            expected_script_hash,
+            min_satoshis=required,
+        )
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError):
+        return False
+
+
 def _verify_parser_bytes(
     tx_bytes: bytes,
     expected_txid: str,
     expected_script_hash: str,
+    *,
+    min_satoshis: int | None = None,
 ) -> bool:
     size_ok = len(tx_bytes) >= 61
     txid_ok = double_sha256(tx_bytes).hex() == expected_txid
@@ -117,6 +149,7 @@ def _verify_parser_bytes(
         tx_bytes,
         output1_start,
         expected_script_hash,
+        min_satoshis=min_satoshis,
     )
     after_output1 = _output_end(tx_bytes, output1_start)
 
@@ -126,6 +159,7 @@ def _verify_parser_bytes(
             tx_bytes,
             after_output1,
             expected_script_hash,
+            min_satoshis=min_satoshis,
         )
         after_output2 = _output_end(tx_bytes, after_output1)
     else:
@@ -139,6 +173,7 @@ def _verify_parser_bytes(
             tx_bytes,
             after_output2,
             expected_script_hash,
+            min_satoshis=min_satoshis,
         )
         after_output3 = _output_end(tx_bytes, after_output2)
     else:
@@ -152,6 +187,7 @@ def _verify_parser_bytes(
             tx_bytes,
             after_output3,
             expected_script_hash,
+            min_satoshis=min_satoshis,
         )
         after_output4 = _output_end(tx_bytes, after_output3)
     else:
@@ -204,15 +240,26 @@ def _output_matches(
     data: bytes,
     start: int,
     expected_script_hash: str,
+    *,
+    min_satoshis: int | None,
 ) -> bool:
     script_len = _read_byte(data, start + 8)
     if script_len <= 0:
+        return False
+    if min_satoshis is not None and _read_amount(data, start) < min_satoshis:
         return False
     script_start = start + 9
     script_bytes = data[script_start:script_start + script_len]
     if len(script_bytes) != script_len:
         return False
     return hashlib.sha256(script_bytes).hexdigest() == expected_script_hash
+
+
+def _read_amount(data: bytes, start: int) -> int:
+    amount = int.from_bytes(data[start:start + 8], "little")
+    if amount > MAX_BTC_SATOSHIS:
+        raise ValueError("Bitcoin output value exceeds max supply")
+    return amount
 
 
 def _normalize_hex(value: str, *, expected_bytes: int) -> str:
@@ -227,7 +274,15 @@ def _normalize_hex(value: str, *, expected_bytes: int) -> str:
     return cleaned
 
 
-def _load_proof(path: str | None) -> dict[str, object]:
+def _validate_satoshis(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if value < 0 or value > MAX_BTC_SATOSHIS:
+        raise ValueError(f"{name} outside Bitcoin supply bounds")
+    return value
+
+
+def _load_proof(path: str | None) -> dict[str, Any]:
     if path in (None, "-"):
         return json.load(sys.stdin)
     with open(path, "r", encoding="utf-8") as handle:
@@ -244,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--raw-tx", required=True, help="Raw Bitcoin transaction hex.")
     build.add_argument("--output-index", type=int, help="Output index to prove.")
     build.add_argument("--script-hash", help="SHA-256 scriptPubKey hash to prove.")
+    build.add_argument("--min-satoshis", type=int, help="Optional minimum output value.")
 
     verify = subparsers.add_parser("verify-local", help="Verify proof JSON locally.")
     verify.add_argument("proof", nargs="?", default="-", help="Proof JSON path or stdin.")
@@ -255,13 +311,17 @@ def main(argv: list[str] | None = None) -> int:
             args.raw_tx,
             output_index=args.output_index,
             script_hash=args.script_hash,
+            min_satoshis=args.min_satoshis,
         )
         print(json.dumps(proof, indent=2, sort_keys=True))
         return 0
 
     if args.command == "verify-local":
         proof = _load_proof(args.proof)
-        ok = verify_bounded_parser(proof)
+        if proof.get("contract") == "btc_verify_parser_amount":
+            ok = verify_bounded_parser_amount(proof)
+        else:
+            ok = verify_bounded_parser(proof)
         print("ok" if ok else "invalid")
         return 0 if ok else 1
 

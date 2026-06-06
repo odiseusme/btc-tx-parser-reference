@@ -1,0 +1,160 @@
+{
+  // =====================================================
+  // Bitcoin tx parser with amount binding (bounded version)
+  // =====================================================
+  //
+  // SELF box registers:
+  //   R4: expected Bitcoin txid in natural hash order (Coll[Byte], 32 bytes)
+  //   R5: expected SHA-256 hash of an output scriptPubKey (Coll[Byte], 32 bytes)
+  //   R6: minimum output value in satoshis (Long)
+  //
+  // Context extension:
+  //   var(1): Bitcoin transaction bytes in non-witness serialization
+  //
+  // This extends btc_verify_parser.ergo by proving that at least one parsed
+  // output has both the expected scriptPubKey hash and value >= R6.
+  //
+  // Supported transaction shape is unchanged:
+  //   - Non-witness serialization only
+  //   - Single-byte CompactSize encoding (counts and lengths < 0xfd)
+  //   - 1 or 2 inputs
+  //   - 1, 2, 3, or 4 outputs
+
+  val txBytes = getVar[Coll[Byte]](1).get
+  val expectedTxid = SELF.R4[Coll[Byte]].get
+  val expectedScriptHash = SELF.R5[Coll[Byte]].get
+  val minSatoshis = SELF.R6[Long].get
+
+  val maxBtcSatoshis = 2100000000000000L
+  val minSatoshisOk = minSatoshis >= 0L && minSatoshis <= maxBtcSatoshis
+
+  // === Txid check ===
+  val txidOk = sha256(sha256(txBytes)) == expectedTxid
+
+  // === Helpers ===
+  def readByte(pos: Int): Int = {
+    val signed = txBytes(pos).toInt
+    if (signed < 0) signed + 256 else signed
+  }
+
+  def inputEnd(start: Int): Int = {
+    val scriptLen = readByte(start + 36)
+    start + 37 + scriptLen + 4
+  }
+
+  def outputEnd(start: Int): Int = {
+    val scriptLen = readByte(start + 8)
+    start + 9 + scriptLen
+  }
+
+  // Bitcoin output values are unsigned 64-bit little-endian integers.
+  // The amount-binding variant intentionally accepts only values that fit
+  // within Bitcoin's supply bound, which is safely below Long.MaxValue.
+  def amountFitsBitcoinSupply(start: Int): Boolean = {
+    val b6 = readByte(start + 6)
+    val b7 = readByte(start + 7)
+    b7 == 0 && b6 <= 7
+  }
+
+  def readAmount(start: Int): Long = {
+    val b0 = readByte(start).toLong
+    val b1 = readByte(start + 1).toLong
+    val b2 = readByte(start + 2).toLong
+    val b3 = readByte(start + 3).toLong
+    val b4 = readByte(start + 4).toLong
+    val b5 = readByte(start + 5).toLong
+    val b6 = readByte(start + 6).toLong
+    b0 +
+      b1 * 256L +
+      b2 * 65536L +
+      b3 * 16777216L +
+      b4 * 4294967296L +
+      b5 * 1099511627776L +
+      b6 * 281474976710656L
+  }
+
+  def outputMatches(start: Int): Boolean = {
+    val scriptLen = readByte(start + 8)
+    if (scriptLen > 0 && amountFitsBitcoinSupply(start)) {
+      val amount = readAmount(start)
+      val amountOk = amount <= maxBtcSatoshis && amount >= minSatoshis
+      val scriptStart = start + 9
+      val scriptBytes = txBytes.slice(scriptStart, scriptStart + scriptLen)
+      amountOk && sha256(scriptBytes) == expectedScriptHash
+    } else {
+      false
+    }
+  }
+
+  // === Parse: version + input count ===
+  val sizeOk = txBytes.size >= 61
+  val inputCount = readByte(4)
+  val inputCountOk = inputCount == 1 || inputCount == 2
+
+  // === Parse inputs (unrolled) ===
+  val input1ScriptLenOk = readByte(5 + 36) < 0xfd
+  val afterInput1 = inputEnd(5)
+
+  val input2ScriptLenOk = if (inputCount == 2) {
+    readByte(afterInput1 + 36) < 0xfd
+  } else {
+    true
+  }
+  val afterInput2 = if (inputCount == 2) inputEnd(afterInput1) else afterInput1
+
+  val inputsEnd = afterInput2
+
+  // === Parse output count ===
+  val outputCount = readByte(inputsEnd)
+  val outputCountOk = outputCount >= 1 && outputCount <= 4
+
+  // === Parse outputs (unrolled) ===
+  val output1Start = inputsEnd + 1
+  val output1ScriptLenOk = readByte(output1Start + 8) < 0xfd
+  val match1 = outputMatches(output1Start)
+  val afterOutput1 = outputEnd(output1Start)
+
+  val output2ScriptLenOk = if (outputCount >= 2) {
+    readByte(afterOutput1 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match2 = if (outputCount >= 2) outputMatches(afterOutput1) else false
+  val afterOutput2 = if (outputCount >= 2) outputEnd(afterOutput1) else afterOutput1
+
+  val output3ScriptLenOk = if (outputCount >= 3) {
+    readByte(afterOutput2 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match3 = if (outputCount >= 3) outputMatches(afterOutput2) else false
+  val afterOutput3 = if (outputCount >= 3) outputEnd(afterOutput2) else afterOutput2
+
+  val output4ScriptLenOk = if (outputCount == 4) {
+    readByte(afterOutput3 + 8) < 0xfd
+  } else {
+    true
+  }
+  val match4 = if (outputCount == 4) outputMatches(afterOutput3) else false
+  val afterOutput4 = if (outputCount == 4) outputEnd(afterOutput3) else afterOutput3
+
+  val outputsEnd = afterOutput4
+
+  // === Locktime structural check ===
+  val locktimeOk = outputsEnd == txBytes.size - 4
+  val anyOutputMatches = match1 || match2 || match3 || match4
+  val allVarintsOk = input1ScriptLenOk && input2ScriptLenOk &&
+                     output1ScriptLenOk && output2ScriptLenOk &&
+                     output3ScriptLenOk && output4ScriptLenOk
+
+  sigmaProp(
+    sizeOk &&
+    txidOk &&
+    minSatoshisOk &&
+    inputCountOk &&
+    outputCountOk &&
+    allVarintsOk &&
+    locktimeOk &&
+    anyOutputMatches
+  )
+}

@@ -19,6 +19,7 @@ the recommended pattern.
 | File | Status | Purpose |
 | --- | --- | --- |
 | `btc_verify_parser.ergo` | Canonical, mainnet spend-tested | R4 txid + R5 parsed output script hash |
+| `btc_verify_parser_amount.ergo` | Experimental, model-tested and compile-checked | R4 txid + R5 script hash + R6 minimum satoshis |
 | `btc_ergo_proof.py` | Tested helper | Build and locally verify proof JSON |
 | `btc_tx_parser.py` | Tested helper | Parse Bitcoin transactions and strip SegWit witness data |
 | `btc_verify_outputs.ergo` | Historical | R4 + R5 + R6 outputs-section helper hash |
@@ -69,6 +70,19 @@ The contract checks:
 2. transaction structure fits the bounded subset;
 3. one parsed output has `sha256(scriptPubKey) == R5`;
 4. locktime lands exactly at the end of the parsed outputs.
+
+## Amount-Binding Variant
+
+`btc_verify_parser_amount.ergo` extends the canonical ABI with:
+
+| Location | Type | Meaning |
+| --- | --- | --- |
+| `SELF.R6` | `Long` | Minimum required output value in satoshis |
+
+It proves that one parsed output has both the expected script hash and
+`value_satoshis >= R6`. This is the natural next primitive for "pay BTC, claim
+on Ergo" flows, but it is marked experimental until it is spend-tested on the
+target node/tooling version.
 
 ## Supported Bitcoin Transaction Shape
 
@@ -137,6 +151,7 @@ The Python tests cover:
 - more than four outputs;
 - empty output script;
 - unsupported CompactSize marker;
+- amount threshold pass/fail behavior;
 - public valid and invalid JSON vectors;
 - AppKit compilation of the canonical contracts;
 
