@@ -118,6 +118,58 @@ class BitcoinProofReferenceTests(unittest.TestCase):
 
         self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=1))
 
+    def test_amount_binding_accepts_any_matching_output_not_just_first_match(self):
+        # Mutate the Rosen tx so outputs 1 and 2 share output 1's P2WPKH script.
+        # All values are 8-byte little-endian satoshi amounts, mirroring
+        # btc_verify_parser_amount.ergo readAmount.
+        # Stripped-tx offsets: output 1 value 109..117, script 118..140;
+        #                      output 2 value 140..148, script 149..171.
+        # R6 is set on the proof register to mirror the contract's SELF.R6[Long] ABI.
+
+        # Case A: output 1 matches script and value, output 2 has shared script but
+        # lower value. Expect True (first matching output satisfies the predicate).
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        tx_bytes[149:171] = tx_bytes[118:140]
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+        proof["registers"]["R6"] = 100000
+        self.assertTrue(verify_bounded_parser_amount(proof))
+
+        # Case B: output 1 underpays, output 2 satisfies threshold. Expect True
+        # (the later matching output satisfies the predicate).
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        tx_bytes[149:171] = tx_bytes[118:140]
+        tx_bytes[109:117] = (100).to_bytes(8, "little")
+        tx_bytes[140:148] = (500000).to_bytes(8, "little")
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+        proof["registers"]["R6"] = 100000
+        self.assertTrue(verify_bounded_parser_amount(proof))
+
+        # Case C: both outputs match the script but neither meets R6.
+        # Negative control. Expect False.
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        tx_bytes[149:171] = tx_bytes[118:140]
+        tx_bytes[109:117] = (100).to_bytes(8, "little")
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+        proof["registers"]["R6"] = 100000
+        self.assertFalse(verify_bounded_parser_amount(proof))
+
+    def test_amount_binding_rejects_when_script_and_amount_are_on_different_outputs(self):
+        # Decoupling regression catcher: output 1 has the matching script but
+        # underpays; output 2 has a different script but has high value. A
+        # correct implementation checks (script_match AND amount_match) per
+        # output; a broken implementation that checks them independently would
+        # spuriously accept this case.
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        tx_bytes[109:117] = (100).to_bytes(8, "little")
+        tx_bytes[140:148] = (500000).to_bytes(8, "little")
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+        proof["registers"]["R6"] = 100000
+        self.assertFalse(verify_bounded_parser_amount(proof))
+
     def test_amount_contract_uses_r6_min_satoshis_abi(self):
         source = (ROOT / "btc_verify_parser_amount.ergo").read_text(encoding="utf-8")
 
