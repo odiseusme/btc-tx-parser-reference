@@ -254,8 +254,10 @@ def _output_matches(
     script_len = _read_byte(data, start + 8)
     if script_len <= 0:
         return False
-    if min_satoshis is not None and _read_amount(data, start) < min_satoshis:
-        return False
+    if min_satoshis is not None:
+        amount = _read_amount(data, start)
+        if amount > MAX_BTC_SATOSHIS or amount < min_satoshis:
+            return False
     script_start = start + 9
     script_bytes = data[script_start:script_start + script_len]
     if len(script_bytes) != script_len:
@@ -264,10 +266,13 @@ def _output_matches(
 
 
 def _read_amount(data: bytes, start: int) -> int:
-    amount = int.from_bytes(data[start:start + 8], "little")
-    if amount > MAX_BTC_SATOSHIS:
-        raise ValueError("Bitcoin output value exceeds max supply")
-    return amount
+    """Read an output's 8-byte little-endian satoshi value.
+
+    Over-supply values make the individual output a non-match (mirroring
+    amountFitsBitcoinSupply in btc_verify_parser_amount.ergo) rather than
+    invalidating the whole proof.
+    """
+    return int.from_bytes(data[start:start + 8], "little")
 
 
 def _normalize_hex(value: str, *, expected_bytes: int) -> str:
