@@ -118,6 +118,19 @@ class BitcoinProofReferenceTests(unittest.TestCase):
 
         self.assertFalse(verify_bounded_parser_amount(proof, min_satoshis=1))
 
+    def test_amount_binding_ignores_oversupply_on_non_target_output(self):
+        # Contract semantics: an over-supply sibling output is a per-output
+        # non-match (amountFitsBitcoinSupply gates that single output), not a
+        # proof-wide failure. Output 0 (the OP_RETURN output) is given an
+        # over-supply value; the target output 1 still satisfies the proof.
+        proof = build_bounded_output_proof(ROSEN_BRIDGE_TX_HEX, output_index=1)
+        tx_bytes = bytearray.fromhex(proof["context"]["1"])
+        tx_bytes[47:55] = (2_100_000_000_000_001).to_bytes(8, "little")
+        self._replace_context_bytes_and_r4(proof, bytes(tx_bytes))
+        proof["registers"]["R6"] = 100000
+
+        self.assertTrue(verify_bounded_parser_amount(proof))
+
     def test_amount_binding_accepts_any_matching_output_not_just_first_match(self):
         # Mutate the Rosen tx so outputs 1 and 2 share output 1's P2WPKH script.
         # All values are 8-byte little-endian satoshi amounts, mirroring
