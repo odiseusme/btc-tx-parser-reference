@@ -19,7 +19,7 @@ the recommended pattern.
 | File | Status | Purpose |
 | --- | --- | --- |
 | `btc_verify_parser.ergo` | Canonical, mainnet spend-tested | R4 txid + R5 parsed output script hash |
-| `btc_verify_parser_amount.ergo` | Experimental, model-tested and compile-checked | R4 txid + R5 script hash + R6 minimum satoshis |
+| `btc_verify_parser_amount.ergo` | Canonical, mainnet spend-tested | R4 txid + R5 script hash + R6 minimum satoshis |
 | `btc_ergo_proof.py` | Tested helper | Build and locally verify proof JSON |
 | `btc_tx_parser.py` | Tested helper | Parse Bitcoin transactions and strip SegWit witness data |
 | `btc_verify_outputs.ergo` | Historical | R4 + R5 + R6 outputs-section helper hash |
@@ -81,8 +81,9 @@ The contract checks:
 
 It proves that one parsed output has both the expected script hash and
 `value_satoshis >= R6`. This is the natural next primitive for "pay BTC, claim
-on Ergo" flows, but it is marked experimental until it is spend-tested on the
-target node/tooling version.
+on Ergo" flows. It was mainnet spend-tested at block `1,805,269` with `R6` set
+to the matched output's exact satoshi value, exercising the `>=` boundary
+on-chain (see Mainnet Evidence).
 
 ## Supported Bitcoin Transaction Shape
 
@@ -161,6 +162,16 @@ The canonical parser was reported as mainnet spend-tested at block `1,776,872`,
 spend transaction:
 
 `4298f96593ec179e8aa364efdede4ff5ad7f08d0d9bdc9562f78ee288cdb9129`
+
+The amount-binding variant was mainnet spend-tested at block `1,805,269`,
+spend transaction:
+
+`967d10f6f331bd15771d991a1e42f09fc0dbb671472e7c7a7cefae63274d45c8`
+
+The funding box carried R4/R5 from the same Rosen Bridge Bitcoin transaction
+used throughout the public vectors, with `R6 = 300000` — the matched output's
+exact value, so the spend exercised the `value >= R6` boundary case.
+First-try success, no failed spends.
 
 Earlier historical contracts were also spend-tested and remain documented in
 `AUDIT.md`.
