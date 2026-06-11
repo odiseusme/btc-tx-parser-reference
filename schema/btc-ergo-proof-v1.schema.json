@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/odiseusme/btc-tx-parser-reference/schema/btc-ergo-proof-v1.schema.json",
+  "title": "Bitcoin -> Ergo bounded-parser proof vector (v1)",
+  "description": "Schema for the *.proof.json integration vectors under test-vectors/. Strict on the consensus-relevant fields (contract, registers, context var 1); permissive on the informational bitcoin.* / selected_output / notes metadata, which is documentation only and may be intentionally stale in mutation-derived vectors.",
+  "type": "object",
+  "required": ["contract", "registers", "context"],
+  "properties": {
+    "version": {
+      "description": "Proof format identifier.",
+      "const": "btc-ergo-proof-v1"
+    },
+    "contract": {
+      "description": "Which ErgoScript contract's semantics this vector exercises.",
+      "type": "string",
+      "enum": ["btc_verify_parser", "btc_verify_parser_amount"]
+    },
+    "registers": {
+      "description": "Consensus input: the Ergo box registers the contract reads.",
+      "type": "object",
+      "required": ["R4", "R5"],
+      "properties": {
+        "R4": {
+          "description": "Expected Bitcoin txid in NATURAL double-SHA256 byte order (32 bytes).",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "R5": {
+          "description": "SHA-256 of the target output's scriptPubKey (32 bytes).",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "R6": {
+          "description": "Minimum output value in satoshis (present for btc_verify_parser_amount).",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "description": "Consensus input: Ergo context variables.",
+      "type": "object",
+      "required": ["1"],
+      "properties": {
+        "1": {
+          "description": "Non-witness (stripped) transaction serialization as even-length lowercase hex.",
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bitcoin": {
+      "description": "Informational, human-oriented decode of the transaction. Documentation only, not consensus input.",
+      "type": "object",
+      "properties": {
+        "txid_display": { "type": "string" },
+        "txid_natural": { "type": "string" },
+        "is_segwit": { "type": "boolean" },
+        "input_count": { "type": "integer" },
+        "output_count": { "type": "integer" },
+        "stripped_size_bytes": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "selected_output": {
+      "description": "Informational record of the output the vector targets. Documentation only.",
+      "type": "object",
+      "properties": {
+        "index": { "type": "integer" },
+        "value_satoshis": { "type": "integer" },
+        "script_pubkey_hex": { "type": "string" },
+        "script_hash_sha256": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "expected": {
+      "description": "Informational expected verdict for the vector.",
+      "type": "string",
+      "enum": ["valid", "invalid"]
+    },
+    "reason": {
+      "description": "Informational human-readable note about why the vector is valid/invalid.",
+      "type": "string"
+    },
+    "notes": {
+      "description": "Informational free-form notes."
+    }
+  },
+  "additionalProperties": true,
+  "if": {
+    "properties": {
+      "contract": { "const": "btc_verify_parser_amount" }
+    },
+    "required": ["contract"]
+  },
+  "then": {
+    "properties": {
+      "registers": {
+        "required": ["R6"]
+      }
+    }
+  }
+}

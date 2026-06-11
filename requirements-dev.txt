@@ -1,0 +1,4 @@
+# Development/test-only dependencies.
+# The core reference library (btc_tx_parser.py, btc_ergo_proof.py) is
+# stdlib-only; nothing here is required to build or verify proofs.
+jsonschema==4.23.0

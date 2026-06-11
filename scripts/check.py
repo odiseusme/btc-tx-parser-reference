@@ -22,6 +22,8 @@ PYTHON_CHECKS = [
         "test_rosen_bridge.py",
         "tests/fixtures.py",
         "tests/test_reference_kit.py",
+        "tests/test_vector_schema.py",
+        "tests/test_fuzz_differential.py",
     ],
     [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
     [
