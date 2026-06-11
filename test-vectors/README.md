@@ -16,3 +16,14 @@ The vectors in this directory are small integration fixtures for consumers.
 
 `tests/test_reference_kit.py` loads every `*.proof.json` file from both
 directories. This keeps public vectors and local verifier behavior in sync.
+
+## Schema
+
+Every `*.proof.json` vector conforms to the JSON Schema (draft 2020-12) at
+[`schema/btc-ergo-proof-v1.schema.json`](../schema/btc-ergo-proof-v1.schema.json).
+The schema is strict on the consensus-relevant fields (`contract`, `registers`
+`R4`/`R5`/`R6`, and `context."1"`) and permissive on the informational
+`bitcoin.*` / `selected_output` metadata, which is documentation only and may be
+intentionally stale in mutation-derived vectors. `tests/test_vector_schema.py`
+validates all vectors against it using the `jsonschema` dev/test dependency
+(see `requirements-dev.txt`); the core library itself remains stdlib-only.

@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install dev/test dependencies
+        run: pip install -r requirements-dev.txt
       - name: Run Python reference checks
         run: python scripts/check.py --python-only
 
@@ -28,5 +30,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: sbt/setup-sbt@v1
+      - name: Install dev/test dependencies
+        run: pip install -r requirements-dev.txt
       - name: Compile ErgoScript contracts with AppKit
         run: python scripts/check.py --sbt-only
